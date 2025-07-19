@@ -1,60 +1,44 @@
 import streamlit as st
 import numpy as np
-from keras.models import load_model
-from keras.preprocessing.sequence import pad_sequences
-import pickle
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+import joblib
 
 # --- Load Model and Tokenizer ---
-model = load_model('lstm_model.h5')
+try:
+    tokenizer = joblib.load("tokenizer.pkl_")
+    model = load_model("lstm_model.h5")
+    max_len = model.input_shape[1] + 1  # Adjust max_len based on model input
 
-with open('tokenizer.pkl', 'rb') as f:
-    tokenizer = pickle.load(f)
+    st.set_page_config(page_title="LSTM Text Predictor", layout="centered")
+    st.markdown("<h1 style='text-align: center;'>🧠 LSTM Text Generator</h1>", unsafe_allow_html=True)
+    st.markdown("<hr>", unsafe_allow_html=True)
 
-# Define max_len same as training
-max_len = 10  # <-- Change to your actual `max_len` used during training
+    # --- Text Input ---
+    text_input = st.text_input("🔤 Enter a starting word or phrase:")
 
+    if st.button("🚀 Predict Next Words"):
+        if text_input.strip():
+            output = text_input.strip()
+            for _ in range(15):  # Predict next 15 words
+                seq = tokenizer.texts_to_sequences([output])[0]
+                padded = pad_sequences([seq], maxlen=max_len-1, padding='pre')
+                pred_idx = np.argmax(model.predict(padded, verbose=0), axis=-1)[0]
 
-# --- Sentence Completion Function ---
-def complete_sentence(seed_text, tokenizer, model, max_len, num_words=5):
-    for _ in range(num_words):
-        # Tokenize and pad
-        token_list = tokenizer.texts_to_sequences([seed_text])[0]
-        token_list = pad_sequences([token_list], maxlen=max_len - 1, padding='pre')
+                # Find the word from index
+                next_word = ""
+                for word, index in tokenizer.word_index.items():
+                    if index == pred_idx:
+                        next_word = word
+                        break
 
-        # Predict next word
-        predicted_index = np.argmax(model.predict(token_list), axis=-1)[0]
+                if next_word == "":
+                    break
+                output += " " + next_word
 
-        # Get word from index
-        output_word = ''
-        for word, index in tokenizer.word_index.items():
-            if index == predicted_index:
-                output_word = word
-                break
-
-        # If no word found, stop
-        if output_word == '':
-            break
-
-        # Append predicted word to seed text
-        seed_text += ' ' + output_word
-
-    return seed_text
-
-
-# --- Streamlit UI ---
-st.title("🧠 LSTM Sentence Completion")
-st.write("Enter a starting phrase, and the model will complete the sentence.")
-
-# Input from user
-user_input = st.text_input("Enter starting sentence:")
-
-# Number of words to predict
-num_words = st.slider("How many words to predict?", min_value=1, max_value=20, value=5)
-
-# Predict button
-if st.button("Complete Sentence"):
-    if user_input.strip() == "":
-        st.warning("Please enter a sentence.")
-    else:
-        result = complete_sentence(user_input, tokenizer, model, max_len, num_words)
-        st.success(f"**Completed sentence:** {result}")
+            st.success("📝 **Generated Text:**")
+            st.markdown(f"```{output}```")
+        else:
+            st.warning("⚠️ Please enter a starting word.")
+except Exception as e:
+    st.error(f"❌ Error loading model or tokenizer:\n\n{e}")
